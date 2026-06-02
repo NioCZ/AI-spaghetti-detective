@@ -1,104 +1,121 @@
 # AI Spaghetti Detective for Klipper
 
-This is a Klipper `extras` module that checks a webcam snapshot with the OpenAI
-Responses API every N layers. It is meant as a practical "spaghetti detective":
-your slicer calls a G-code command on layer change, the plugin captures a camera
-snapshot, asks a vision-capable OpenAI model for a JSON verdict, and can pause
-the print when the model is confident that the print has failed.
+Klipper `extras` module that checks a webcam snapshot with the OpenAI Responses
+API and can pause the print when it sees a confident spaghetti failure.
 
-It does not train a local model and does not need GPU hardware on the printer
-host. It uses only Python standard library modules.
+Repository: [NioCZ/AI-spaghetti-detective](https://github.com/NioCZ/AI-spaghetti-detective)
 
-## Files
+No local AI model, GPU, or Python package install is needed. The plugin uses
+only Python standard library modules.
 
-- `klippy/extras/ai_spaghetti_detective.py` - Klipper plugin module.
-- `config/ai_spaghetti_detective.cfg` - example `printer.cfg` section and macros.
-- `scripts/install.sh` - Linux install helper for a normal `~/klipper` setup.
+## Quick Setup
 
-## Install
-
-On the Klipper host:
+Run this on the Klipper host:
 
 ```bash
-cd ~/printer_data/config
-git clone <this-repo-or-copy-folder> ai-spaghetti-detective
-cd ai-spaghetti-detective
-bash scripts/install.sh
+cd ~
+git clone https://github.com/NioCZ/AI-spaghetti-detective.git
+cd AI-spaghetti-detective
+
+read -rsp "OpenAI API key: " OPENAI_API_KEY
+printf '\n'
+OPENAI_API_KEY="$OPENAI_API_KEY" bash scripts/install.sh
+unset OPENAI_API_KEY
+
+sudo systemctl restart klipper
 ```
 
-If Klipper is not installed in `~/klipper`:
+The installer:
 
-```bash
-KLIPPER_DIR=/path/to/klipper bash scripts/install.sh
+- copies the plugin to `~/klipper/klippy/extras/ai_spaghetti_detective.py`
+- copies the minimal config to `~/printer_data/config/ai_spaghetti_detective.cfg`
+- saves the API key to `~/printer_data/config/openai_api_key` when provided
+- keeps `api_key_path` in the copied config aligned with your config directory
+- adds `[include ai_spaghetti_detective.cfg]` to `printer.cfg` when missing
+- backs up `printer.cfg` before changing it
+
+Then add this to your slicer layer-change G-code:
+
+```gcode
+AI_SPAGHETTI_LAYER
 ```
 
-Then copy the relevant section from `config/ai_spaghetti_detective.cfg` into
-`printer.cfg` and restart Klipper.
+That is the normal setup.
 
-## API Key
+## Test
 
-Recommended:
+After Klipper restarts, run this from the console:
 
-```bash
-echo "sk-your-key-here" > ~/printer_data/config/openai_api_key
-chmod 600 ~/printer_data/config/openai_api_key
+```gcode
+AI_SPAGHETTI_TEST
+AI_SPAGHETTI_STATUS
 ```
 
-The plugin also checks the `OPENAI_API_KEY` environment variable. A direct
-`api_key:` config option exists, but putting secrets directly in `printer.cfg`
-is usually a bad habit.
+## Camera
 
-## Camera Snapshot
-
-Set one of these in `[ai_spaghetti_detective]`:
+The default camera URL is:
 
 ```ini
 snapshot_url: http://127.0.0.1/webcam/?action=snapshot
-# snapshot_url: http://127.0.0.1/webcam/snapshot
-# snapshot_path: /tmp/klipper_snapshot.jpg
 ```
 
-Test the URL from the Klipper host before relying on it:
+If your printer uses a different snapshot URL, edit:
+
+```bash
+nano ~/printer_data/config/ai_spaghetti_detective.cfg
+```
+
+Common alternatives:
+
+```ini
+snapshot_url: http://127.0.0.1/webcam/snapshot
+snapshot_path: /tmp/klipper_snapshot.jpg
+```
+
+You can test the default URL from the Klipper host:
 
 ```bash
 curl -o /tmp/test_snapshot.jpg 'http://127.0.0.1/webcam/?action=snapshot'
 ```
 
-## Slicer Layer Change G-code
+## Custom Paths
 
-Add this to the slicer's "after layer change" or "layer change G-code":
+If Klipper or `printer.cfg` is not in the default location, set paths before
+running the installer:
 
-```gcode
-AI_SPAGHETTI_CHECK
+```bash
+KLIPPER_DIR="$HOME/klipper" PRINTER_CONFIG_DIR="$HOME/printer_data/config" bash scripts/install.sh
 ```
 
-The plugin will count calls and check every `check_every_layers`.
+Change the values to match your install.
 
-If your slicer can provide a layer number, you can pass it:
+## Update
 
-```gcode
-AI_SPAGHETTI_CHECK LAYER={layer_num}
+```bash
+cd ~/AI-spaghetti-detective
+git pull
+bash scripts/install.sh
+sudo systemctl restart klipper
 ```
-
-For PrusaSlicer/SuperSlicer/OrcaSlicer you may need the placeholder used by
-your slicer profile. If the layer placeholder is uncertain, use the simple
-counter form first.
 
 ## Useful Commands
 
 ```gcode
-AI_SPAGHETTI_CHECK FORCE=1
+AI_SPAGHETTI_TEST
 AI_SPAGHETTI_STATUS
 AI_SPAGHETTI_ENABLE ENABLE=0
 AI_SPAGHETTI_ENABLE ENABLE=1
 AI_SPAGHETTI_RESET
 ```
 
-## Important Settings
+## Default Settings
+
+These are already built in:
 
 ```ini
 check_every_layers: 5
 start_layer: 5
+api_key_path: ~/printer_data/config/openai_api_key
 model: gpt-5-mini
 image_detail: low
 pause_on_failure: True
@@ -107,36 +124,11 @@ pause_gcode: PAUSE
 fail_open: True
 ```
 
-`image_detail: low` is usually enough and keeps cost down. Increase to `auto` or
-`high` only if the camera view needs more detail. `original` is accepted by the
-plugin too, but use it only with OpenAI models that support that detail level.
-
-`fail_open: True` means camera/API errors will not pause the printer. Set it to
+`fail_open: True` means camera/API errors do not pause the printer. Set it to
 `False` if you prefer a conservative pause when checks fail.
 
-## What the Model Returns
+## Safety
 
-The plugin asks for structured JSON:
-
-```json
-{
-  "status": "ok | warning | failure | unknown",
-  "confidence": 0.0,
-  "should_pause": false,
-  "reason": "short visible evidence",
-  "recommended_action": "what to check"
-}
-```
-
-The printer pauses only when:
-
-- `pause_on_failure` is true,
-- `status` is in `pause_statuses`,
-- `confidence` is at least `pause_confidence`,
-- `should_pause` is true.
-
-## Notes
-
-This is a safety helper, not a guarantee. Keep normal printer safety practices:
-good camera lighting, thermal protection, smoke detection where appropriate,
-and never treat a cloud model as the only protection for unattended printing.
+This is a helper, not a guarantee. Keep normal printer safety practices: good
+camera lighting, thermal protection, smoke detection where appropriate, and do
+not treat a cloud model as the only protection for unattended printing.

@@ -19,6 +19,7 @@ import urllib.request
 
 _DEFAULT_API_URL = "https://api.openai.com/v1/responses"
 _DEFAULT_MODEL = "gpt-5-mini"
+_DEFAULT_SNAPSHOT_URL = "http://127.0.0.1/webcam/?action=snapshot"
 _VALID_IMAGE_DETAIL = set(["low", "high", "auto", "original"])
 _VALID_STATUSES = set(["ok", "warning", "failure", "unknown"])
 
@@ -45,12 +46,11 @@ class AISpaghettiDetective:
             "max_image_bytes", 8 * 1024 * 1024, minval=1024
         )
 
-        self.snapshot_url = config.get("snapshot_url", None)
+        configured_snapshot_url = config.get("snapshot_url", None)
         self.snapshot_path = config.get("snapshot_path", None)
+        self.snapshot_url = configured_snapshot_url
         if not self.snapshot_url and not self.snapshot_path:
-            raise config.error(
-                "ai_spaghetti_detective requires snapshot_url or snapshot_path"
-            )
+            self.snapshot_url = _DEFAULT_SNAPSHOT_URL
 
         self.api_url = config.get("api_url", _DEFAULT_API_URL)
         self.model = config.get("model", _DEFAULT_MODEL)
