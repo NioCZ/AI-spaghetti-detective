@@ -3,8 +3,6 @@
 Klipper `extras` module that checks a webcam snapshot with the OpenAI Responses
 API and can pause the print when it sees a confident spaghetti failure.
 
-Repository: [NioCZ/AI-spaghetti-detective](https://github.com/NioCZ/AI-spaghetti-detective)
-
 No local AI model, GPU, or Python package install is needed. The plugin uses
 only Python standard library modules.
 
